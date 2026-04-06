@@ -6,7 +6,7 @@ from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
 from distill.db.repository import get_chunk, get_document
-from distill.llm.client import LLMClient
+from distill.llm.client import BaseLLMClient
 from distill.llm.prompts import query_system_prompt
 from distill.search.hybrid import hybrid_search
 
@@ -60,7 +60,7 @@ def build_context(
 
 
 def run_query(
-    client: LLMClient,
+    client: BaseLLMClient,
     conn: sqlite3.Connection,
     query: str,
     encoder: SentenceTransformer,

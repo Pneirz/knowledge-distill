@@ -23,7 +23,7 @@ Takes PDFs, web articles, and GitHub READMEs as input and produces:
 
 | Component | Choice |
 |---|---|
-| LLM | Claude API (`claude-sonnet-4-6`) |
+| LLM | Claude Code CLI, Codex CLI, or Anthropic API |
 | Database | SQLite (no ORM) |
 | Semantic search | FAISS + `sentence-transformers` (BAAI/bge-small-en-v1.5) |
 | Lexical search | BM25 (`rank-bm25`) |
@@ -46,13 +46,20 @@ cd distill
 poetry install
 
 cp .env.example .env
-# Edit .env and set ANTHROPIC_API_KEY
+# Choose LLM_BACKEND=claude-code, codex, or anthropic
+# Only set ANTHROPIC_API_KEY if using anthropic
 
 distill init
 ```
 
 `distill init` creates the full directory structure, initializes the SQLite database,
 and sets up an Obsidian vault at `data/04_compiled_wiki/`.
+
+Backend modes:
+
+- `LLM_BACKEND=claude-code`: uses the local `claude` CLI session, no API key required
+- `LLM_BACKEND=codex`: uses the local `codex` CLI session, no API key required
+- `LLM_BACKEND=anthropic`: uses the Anthropic API and requires `ANTHROPIC_API_KEY`
 
 **Obsidian setup:** open Obsidian → "Open folder as vault" → select `data/04_compiled_wiki/`.
 Install the **Dataview** community plugin to enable the index queries in `00_INDEX.md`.
@@ -81,7 +88,7 @@ distill ingest
 
 ```bash
 distill parse --all      # extract text, detect sections, create chunks
-distill extract --all    # call Claude to extract claims and concepts per chunk
+distill extract --all    # call the configured LLM backend to extract claims and concepts per chunk
 distill compile --all    # generate Obsidian notes (papers/ and concepts/)
 distill verify --all     # verify each claim's raw_quote against its source chunk
 distill reindex          # build FAISS and BM25 indices
@@ -209,8 +216,9 @@ No real API calls are made during testing.
 
 | Variable | Default | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | Required |
-| `LLM_MODEL` | `claude-sonnet-4-6` | Claude model for extraction and compilation |
+| `LLM_BACKEND` | `claude-code` | `claude-code`, `codex`, or `anthropic` |
+| `ANTHROPIC_API_KEY` | — | Required only when `LLM_BACKEND=anthropic` |
+| `LLM_MODEL` | `claude-sonnet-4-6` | Model name for the selected backend |
 | `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Sentence transformer for FAISS |
 | `KNOWLEDGE_DATA_ROOT` | `data` | Root directory for all data layers |
 | `CHUNK_MAX_TOKENS` | `512` | Maximum tokens per chunk |

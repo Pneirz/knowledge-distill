@@ -3,12 +3,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from distill.db.repository import get_claims_by_doc, get_document, list_documents
-from distill.llm.client import LLMClient
+from distill.llm.client import BaseLLMClient
 from distill.llm.prompts import brief_system_prompt
 
 
 def generate_brief(
-    client: LLMClient,
+    client: BaseLLMClient,
     conn: sqlite3.Connection,
     topic: str,
     doc_ids: list[str],

@@ -12,7 +12,7 @@ from distill.db.repository import (
     list_concepts,
     update_document_status,
 )
-from distill.llm.client import LLMClient
+from distill.llm.client import BaseLLMClient
 from distill.llm.prompts import compilation_system_prompt
 
 
@@ -26,7 +26,7 @@ def _slugify(text: str) -> str:
     return text[:80]
 
 
-def _generate_summary(client: LLMClient, doc_title: str, claims_text: str) -> str:
+def _generate_summary(client: BaseLLMClient, doc_title: str, claims_text: str) -> str:
     """Ask Claude to write a 150-250 word summary grounded in extracted claims."""
     system = compilation_system_prompt()
     user = (
@@ -38,7 +38,7 @@ def _generate_summary(client: LLMClient, doc_title: str, claims_text: str) -> st
 
 
 def generate_paper_note(
-    client: LLMClient,
+    client: BaseLLMClient,
     conn: sqlite3.Connection,
     doc_id: str,
     wiki_root: Path,
@@ -238,7 +238,7 @@ def generate_concept_note(
 
 
 def run_compiler(
-    client: LLMClient,
+    client: BaseLLMClient,
     conn: sqlite3.Connection,
     doc_id: str,
     cfg: Config,

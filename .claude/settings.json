@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(poetry run:*)",
+      "Read(//c/Users/pablo/AppData/Roaming/**)",
+      "Read(//c/Users/pablo/.local/bin/**)",
+      "Read(//c/Users/pablo/**)",
+      "Bash(pip show:*)",
+      "Bash(python -c \"import urllib.request; data = urllib.request.urlopen\\('https://install.python-poetry.org'\\).read\\(\\); open\\('/tmp/install-poetry.py', 'wb'\\).write\\(data\\)\")",
+      "Bash(python -c \"import urllib.request; data = urllib.request.urlopen\\('https://install.python-poetry.org'\\).read\\(\\); open\\('C:/Users/pablo/install-poetry.py', 'wb'\\).write\\(data\\)\")",
+      "Bash(python C:/Users/pablo/install-poetry.py)",
+      "Bash(export PATH=\"$PATH:/c/Users/pablo/AppData/Roaming/Python/Scripts\")",
+      "Bash(poetry --version)",
+      "Bash(poetry install:*)",
+      "WebFetch(domain:www.researchgate.net)",
+      "WebFetch(domain:link.springer.com)",
+      "WebFetch(domain:api.semanticscholar.org)",
+      "WebFetch(domain:www.semanticscholar.org)",
+      "WebFetch(domain:mau.se)",
+      "WebFetch(domain:scholar.google.com)",
+      "WebFetch(domain:www.mau.se)",
+      "WebFetch(domain:citeseerx.ist.psu.edu)",
+      "WebFetch(domain:dl.acm.org)",
+      "WebFetch(domain:core.ac.uk)",
+      "WebFetch(domain:api.core.ac.uk)",
+      "WebFetch(domain:api.openalex.org)",
+      "WebFetch(domain:dblp.org)",
+      "WebFetch(domain:jasss.soc.surrey.ac.uk)",
+      "Bash(python -c ':*)",
+      "Bash(ls \"/c/Users/pablo/Downloads/\"*.pdf)",
+      "Bash(cp \"/c/Users/pablo/Downloads/Agent Based Social Simulation a Computer Science View.pdf\" \"c:/Users/pablo/Github/knowledge-distill/data/00_inbox/Davidsson - 2002 - Agent Based Social Simulation A Computer Science View.pdf\")",
+      "Bash(cp \"/c/Users/pablo/Downloads/Mathematical Foundations of Anticipatory.pdf\" \"c:/Users/pablo/Github/knowledge-distill/data/00_inbox/Davidsson - 1995 - Mathematical Foundations of Anticipatory Systems.pdf\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\pablo\\Github\\knowledge-distill\\data\\00_inbox"
+    ]
+  }
+}

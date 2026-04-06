@@ -21,15 +21,28 @@ def _get_conn(ctx: click.Context):
 
 
 def _get_client(ctx: click.Context):
-    """Lazily initialize LLMClient on first use (avoids import cost for non-LLM commands)."""
+    """Lazily initialize LLM client on first use.
+
+    Supported backends:
+    - claude-code: uses the local `claude` CLI (default, no API key needed)
+    - codex: uses the local `codex` CLI (no API key needed)
+    - anthropic: uses the Anthropic API (requires ANTHROPIC_API_KEY)
+    """
     if "client" not in ctx.obj:
-        from distill.llm.client import LLMClient
+        from distill.llm.client import ClaudeCodeClient, CodexCLIClient, LLMClient
 
         cfg = _get_config(ctx)
-        if not cfg.anthropic_api_key:
-            console.print("[red]ANTHROPIC_API_KEY is not set.[/red]")
-            sys.exit(1)
-        ctx.obj["client"] = LLMClient(cfg.anthropic_api_key, cfg.llm_model)
+        if cfg.llm_backend == "anthropic":
+            if not cfg.anthropic_api_key:
+                console.print("[red]ANTHROPIC_API_KEY is not set.[/red]")
+                sys.exit(1)
+            ctx.obj["client"] = LLMClient(cfg.anthropic_api_key, cfg.llm_model)
+        elif cfg.llm_backend == "codex":
+            ctx.obj["client"] = CodexCLIClient(cfg.llm_model)
+            console.print("[dim]Using Codex CLI as LLM backend.[/dim]")
+        else:
+            ctx.obj["client"] = ClaudeCodeClient(cfg.llm_model)
+            console.print("[dim]Using Claude Code CLI as LLM backend.[/dim]")
     return ctx.obj["client"]
 
 
@@ -123,12 +136,12 @@ def _setup_obsidian_vault(wiki_path: Path) -> None:
         "newLinkFormat": "shortest",
         "defaultViewMode": "source",
     }
-    (obsidian_dir / "app.json").write_text(json.dumps(app_config, indent=2))
+    (obsidian_dir / "app.json").write_text(json.dumps(app_config, indent=2), encoding="utf-8")
 
     # Community plugins list (user must install manually)
     plugins_config = {"enabledPlugins": ["dataview"]}
     (obsidian_dir / "community-plugins.json").write_text(
-        json.dumps(plugins_config, indent=2)
+        json.dumps(plugins_config, indent=2), encoding="utf-8"
     )
 
     # Index note with Dataview query

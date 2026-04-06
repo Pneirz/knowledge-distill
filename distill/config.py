@@ -34,6 +34,8 @@ class Config:
         # LLM settings
         self.anthropic_api_key: str = os.environ.get("ANTHROPIC_API_KEY", "")
         self.llm_model: str = os.environ.get("LLM_MODEL", "claude-sonnet-4-6")
+        # Backend: "claude-code", "codex", or "anthropic"
+        self.llm_backend: str = os.environ.get("LLM_BACKEND", "claude-code")
         self.embedding_model: str = os.environ.get(
             "EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5"
         )

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from distill.llm.client import LLMClient
+from distill.llm.client import ClaudeCodeClient, CodexCLIClient, LLMClient
 
 
 @pytest.fixture
@@ -85,3 +85,58 @@ def test_get_usage_stats_initial_zero():
     stats = client.get_usage_stats()
     assert stats["input_tokens"] == 0
     assert stats["output_tokens"] == 0
+
+
+def test_claude_code_complete_json_strips_fences():
+    """ClaudeCodeClient tolerates fenced JSON from the CLI."""
+    with patch("distill.llm.client.shutil.which", return_value="claude"):
+        client = ClaudeCodeClient(model="test-model")
+    with patch.object(client, "_run", return_value='```json\n{"key": "value"}\n```'):
+        result = client.complete_json(system="s", user="u")
+    assert result == {"key": "value"}
+
+
+def test_codex_complete_reads_last_message_file():
+    """CodexCLIClient reads the final response from --output-last-message."""
+    with patch("distill.llm.client.shutil.which", return_value="codex"):
+        client = CodexCLIClient(model="gpt-5")
+
+    output_file = MagicMock()
+    output_file.read_text.return_value = "final answer"
+    output_file.unlink.return_value = None
+
+    def fake_named_tempfile(*args, **kwargs):
+        class _TempFile:
+            name = "codex-output.txt"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        return _TempFile()
+
+    def fake_run(cmd, capture_output, text, timeout):
+        response = MagicMock()
+        response.returncode = 0
+        response.stderr = ""
+        return response
+
+    with patch("distill.llm.client.tempfile.NamedTemporaryFile", fake_named_tempfile):
+        with patch("distill.llm.client.Path", return_value=output_file):
+            with patch("distill.llm.client.subprocess.run", side_effect=fake_run):
+                result = client.complete(system="sys", user="user")
+
+    assert result == "final answer"
+    output_file.read_text.assert_called_once_with(encoding="utf-8")
+    output_file.unlink.assert_called_once_with(missing_ok=True)
+
+
+def test_codex_complete_json_parses_plain_json():
+    """CodexCLIClient parses JSON responses from codex exec."""
+    with patch("distill.llm.client.shutil.which", return_value="codex"):
+        client = CodexCLIClient(model="gpt-5")
+    with patch.object(client, "_run", return_value='{"claims": [], "concepts": []}'):
+        result = client.complete_json(system="s", user="u")
+    assert result == {"claims": [], "concepts": []}

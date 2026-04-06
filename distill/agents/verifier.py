@@ -13,7 +13,7 @@ from distill.db.repository import (
     update_claim_verification,
     update_document_status,
 )
-from distill.llm.client import LLMClient
+from distill.llm.client import BaseLLMClient
 from distill.llm.prompts import obsolescence_prompt
 
 # Fuzzy match threshold for raw_quote traceability verification
@@ -43,7 +43,7 @@ def run_verifier(
     conn: sqlite3.Connection,
     doc_id: str,
     cfg: Config,
-    client: LLMClient | None = None,
+    client: BaseLLMClient | None = None,
 ) -> dict:
     """Verify all claims for a document.
 
@@ -147,7 +147,7 @@ def generate_verification_report(
 
 
 def check_concept_obsolescence(
-    client: LLMClient,
+    client: BaseLLMClient,
     conn: sqlite3.Connection,
     concept_name: str,
 ) -> dict:

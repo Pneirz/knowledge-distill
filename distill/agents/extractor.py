@@ -14,7 +14,7 @@ from distill.db.repository import (
     update_document_status,
     upsert_concept,
 )
-from distill.llm.client import LLMClient
+from distill.llm.client import BaseLLMClient
 from distill.llm.prompts import extraction_system_prompt
 
 
@@ -29,7 +29,7 @@ def _build_extraction_prompt(chunk_text: str, doc_title: str, year: int | None) 
 
 
 def extract_from_chunk(
-    client: LLMClient,
+    client: BaseLLMClient,
     chunk_text: str,
     doc_title: str,
     year: int | None,
@@ -45,7 +45,7 @@ def extract_from_chunk(
 
 
 def process_chunk(
-    client: LLMClient,
+    client: BaseLLMClient,
     conn: sqlite3.Connection,
     chunk_id: str,
     doc_id: str,
@@ -127,7 +127,7 @@ def process_chunk(
 
 
 def run_extractor(
-    client: LLMClient,
+    client: BaseLLMClient,
     conn: sqlite3.Connection,
     doc_id: str,
     cfg: Config,
@@ -162,7 +162,7 @@ def run_extractor(
         "claim_ids": all_claim_ids,
     }
     dest = cfg.extracted_path / f"{doc_id}.json"
-    dest.write_text(json.dumps(summary, indent=2))
+    dest.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
 
     update_document_status(
         conn, doc_id, "extracted",

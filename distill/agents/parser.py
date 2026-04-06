@@ -329,7 +329,7 @@ def parse_document(
         "references": parsed["references"],
         "chunk_count": len(chunks),
     }
-    parsed_dest.write_text(json.dumps(parsed_data, indent=2, ensure_ascii=False))
+    parsed_dest.write_text(json.dumps(parsed_data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     update_document_status(
         conn, doc_id, "parsed", parsed_path=str(parsed_dest.relative_to(cfg.data_root))

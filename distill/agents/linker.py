@@ -12,7 +12,7 @@ from distill.db.repository import (
     get_document,
     insert_evidence_link,
 )
-from distill.llm.client import LLMClient
+from distill.llm.client import BaseLLMClient
 from distill.llm.prompts import contradiction_detection_prompt
 
 # Similarity threshold above which two claims are compared for contradiction
@@ -25,7 +25,7 @@ def _cosine_similarity(vec_a: np.ndarray, vec_b: np.ndarray) -> float:
 
 
 def detect_relation(
-    client: LLMClient,
+    client: BaseLLMClient,
     claim_a_text: str,
     claim_b_text: str,
 ) -> tuple[str, float]:
@@ -46,7 +46,7 @@ def detect_relation(
 
 
 def run_linker(
-    client: LLMClient,
+    client: BaseLLMClient,
     conn: sqlite3.Connection,
     doc_id: str,
     faiss_index,
