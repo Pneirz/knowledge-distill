@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+
+# Data directory (large files, generated content)
+data/00_inbox/
+data/01_raw/
+data/02_parsed/
+data/03_extracted/
+data/05_search_index/
+data/06_outputs/
+data/07_registry/
+
+# Wiki vault - keep structure, ignore generated notes
+data/04_compiled_wiki/papers/
+data/04_compiled_wiki/concepts/
+data/04_compiled_wiki/methods/
+data/04_compiled_wiki/contradictions/
+
+# Obsidian workspace state (personal, not shared)
+data/04_compiled_wiki/.obsidian/workspace.json
+data/04_compiled_wiki/.obsidian/workspace-mobile.json
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Testing and coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+__MACOSX/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
