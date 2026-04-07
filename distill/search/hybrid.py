@@ -1,6 +1,8 @@
-import numpy as np
+from __future__ import annotations
+
+from typing import Any
+
 from rank_bm25 import BM25Okapi
-from sentence_transformers import SentenceTransformer
 
 import faiss
 
@@ -31,7 +33,7 @@ def reciprocal_rank_fusion(
 
 def hybrid_search(
     query: str,
-    encoder: SentenceTransformer,
+    encoder: Any,
     faiss_index: faiss.Index,
     bm25_index: BM25Okapi,
     chunk_ids: list[str],

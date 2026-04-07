@@ -50,7 +50,11 @@ CREATE TABLE IF NOT EXISTS claim (
     verified        INTEGER NOT NULL DEFAULT 0,
     verified_at     TEXT,
     page_ref        INTEGER,
-    raw_quote       TEXT
+    raw_quote       TEXT,
+    lifecycle_status TEXT NOT NULL DEFAULT 'active'
+                    CHECK(lifecycle_status IN ('active', 'superseded', 'contested')),
+    superseded_by_claim_id TEXT REFERENCES claim(claim_id),
+    lifecycle_updated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS concept (
@@ -86,14 +90,71 @@ CREATE TABLE IF NOT EXISTS claim_concept (
     PRIMARY KEY (claim_id, concept_id)
 );
 
+CREATE TABLE IF NOT EXISTS audit_log (
+    event_id        TEXT PRIMARY KEY,
+    entity_type     TEXT NOT NULL,
+    entity_id       TEXT NOT NULL,
+    action          TEXT NOT NULL,
+    details_json    TEXT NOT NULL,
+    created_at      TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_chunk_doc      ON chunk(doc_id);
 CREATE INDEX IF NOT EXISTS idx_claim_doc      ON claim(doc_id);
 CREATE INDEX IF NOT EXISTS idx_claim_chunk    ON claim(chunk_id);
 CREATE INDEX IF NOT EXISTS idx_claim_type     ON claim(claim_type);
+CREATE INDEX IF NOT EXISTS idx_claim_lifecycle ON claim(lifecycle_status);
 CREATE INDEX IF NOT EXISTS idx_evlink_from    ON evidence_link(from_type, from_id);
 CREATE INDEX IF NOT EXISTS idx_evlink_to      ON evidence_link(to_type, to_id);
 CREATE INDEX IF NOT EXISTS idx_concept_name   ON concept(name);
+CREATE INDEX IF NOT EXISTS idx_audit_entity   ON audit_log(entity_type, entity_id);
 """
+
+
+def _ensure_column(
+    conn: sqlite3.Connection,
+    table: str,
+    column: str,
+    ddl: str,
+) -> None:
+    columns = {
+        row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+
+
+def _ensure_schema_compat(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after the initial schema for existing databases."""
+    _ensure_column(
+        conn,
+        "claim",
+        "lifecycle_status",
+        "lifecycle_status TEXT NOT NULL DEFAULT 'active' CHECK(lifecycle_status IN ('active', 'superseded', 'contested'))",
+    )
+    _ensure_column(
+        conn,
+        "claim",
+        "superseded_by_claim_id",
+        "superseded_by_claim_id TEXT",
+    )
+    _ensure_column(
+        conn,
+        "claim",
+        "lifecycle_updated_at",
+        "lifecycle_updated_at TEXT",
+    )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS audit_log ("
+        "event_id TEXT PRIMARY KEY, "
+        "entity_type TEXT NOT NULL, "
+        "entity_id TEXT NOT NULL, "
+        "action TEXT NOT NULL, "
+        "details_json TEXT NOT NULL, "
+        "created_at TEXT NOT NULL)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_claim_lifecycle ON claim(lifecycle_status)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id)")
 
 
 def initialize_db(conn: sqlite3.Connection) -> None:
@@ -104,6 +165,7 @@ def initialize_db(conn: sqlite3.Connection) -> None:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(DDL)
+    _ensure_schema_compat(conn)
     conn.commit()
 
 

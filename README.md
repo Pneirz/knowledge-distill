@@ -16,7 +16,9 @@ Takes PDFs, web articles, and GitHub READMEs as input and produces:
 - A SQLite database of documents, chunks, claims, concepts, and their relations
 - An Obsidian vault with one note per paper and one per concept, linked via `[[wiki-links]]`
 - Hybrid semantic + lexical search (FAISS + BM25) with Reciprocal Rank Fusion
+- Lifecycle-aware claims with `active`, `superseded`, and `contested` states
 - Contradiction detection between claims from different papers
+- Audit trail for verification, lifecycle review, contradiction links, and compilation
 - Evidence-grounded answers to free-text questions
 
 ## Stack
@@ -61,8 +63,9 @@ Backend modes:
 - `LLM_BACKEND=codex`: uses the local `codex` CLI session, no API key required
 - `LLM_BACKEND=anthropic`: uses the Anthropic API and requires `ANTHROPIC_API_KEY`
 
-**Obsidian setup:** open Obsidian → "Open folder as vault" → select `data/04_compiled_wiki/`.
-Install the **Dataview** community plugin to enable the index queries in `00_INDEX.md`.
+Obsidian setup: open Obsidian, choose "Open folder as vault", and select
+`data/04_compiled_wiki/`. Install the Dataview community plugin to enable the
+queries in `00_INDEX.md`.
 
 ---
 
@@ -74,7 +77,7 @@ Place a PDF or saved HTML article in `data/00_inbox/`.
 
 Rename it using the optional convention for automatic metadata extraction:
 
-```
+```text
 Author et al - YEAR - Title.pdf
 ```
 
@@ -87,11 +90,12 @@ distill ingest
 ### Run the pipeline
 
 ```bash
-distill parse --all      # extract text, detect sections, create chunks
-distill extract --all    # call the configured LLM backend to extract claims and concepts per chunk
-distill compile --all    # generate Obsidian notes (papers/ and concepts/)
-distill verify --all     # verify each claim's raw_quote against its source chunk
-distill reindex          # build FAISS and BM25 indices
+distill parse --all
+distill extract --all
+distill compile --all
+distill verify --all
+distill review-lifecycle --all
+distill reindex
 ```
 
 Each step is idempotent. Re-running with `--all` skips already-processed documents.
@@ -102,88 +106,106 @@ You can process a single document by passing its `doc_id` instead of `--all`.
 ```bash
 distill query "what attention mechanism does the Transformer use?"
 distill query "what are the limitations?" --top-k 5 --format markdown
+distill query "how did attention methods evolve?" --include-superseded
 ```
 
-Every answer includes cited sources, a confidence level, and an explicit uncertainty statement.
+Every answer includes cited sources, a confidence level, and an explicit uncertainty
+statement. By default, query prefers `active` and `verified` claims as primary
+evidence. Use `--include-superseded` to bring historical claims back as secondary
+evidence.
+
+### Review lifecycle
+
+```bash
+distill review-lifecycle "self-attention"
+distill review-lifecycle --all
+```
+
+Lifecycle review updates temporal validity without changing traceability:
+
+- `active`: default evidence for query and output
+- `superseded`: preserved for history, excluded from primary evidence by default
+- `contested`: contradicted by another active claim and surfaced as uncertainty
 
 ### Generate outputs
 
 ```bash
-# Executive brief on a topic
 distill output "attention mechanisms" --type brief
-
-# Comparison table across papers (by claim type)
 distill output "comparison" --type table --dimensions finding,method,limitation
-
-# Concept map in Mermaid format
 distill output "transformer,self-attention,positional-encoding" --type concept-map
 ```
 
 ### Inspect status
 
 ```bash
-distill status    # table of all documents with pipeline stage
+distill status
 ```
 
 ---
 
 ## Directory structure
 
-```
+```text
 data/
-├── 00_inbox/           # drop new documents here
-├── 01_raw/             # immutable copy of originals
-├── 02_parsed/          # JSON: sections and chunks per document
-├── 03_extracted/       # JSON: claims and concepts per document
-├── 04_compiled_wiki/   # Obsidian vault
-│   ├── .obsidian/
-│   ├── 00_INDEX.md     # Dataview index of all papers and concepts
-│   ├── papers/
-│   ├── concepts/
-│   ├── methods/
-│   └── contradictions/
-├── 05_search_index/    # serialized FAISS and BM25 indices
-├── 06_outputs/         # generated briefs, tables, concept maps
-└── 07_registry/
-    └── distill.db      # SQLite: documents, chunks, claims, concepts, links
+|-- 00_inbox/
+|-- 01_raw/
+|-- 02_parsed/
+|-- 03_extracted/
+|-- 04_compiled_wiki/
+|   |-- .obsidian/
+|   |-- 00_INDEX.md
+|   |-- papers/
+|   |-- concepts/
+|   |-- methods/
+|   `-- contradictions/
+|-- 05_search_index/
+|-- 06_outputs/
+`-- 07_registry/
+    `-- distill.db
 ```
 
 ---
 
 ## Epistemological guarantees
 
-**Traceability:** every `Claim` record has a `raw_quote` field — a verbatim excerpt from
-its source chunk. The `verify` command uses fuzzy matching (threshold 85) to confirm
-the quote exists in the chunk. Claims that fail this check are marked `verified=-1`.
+**Traceability:** every `Claim` record has a `raw_quote` field, a verbatim excerpt
+from its source chunk. The `verify` command uses fuzzy matching (threshold 85) to
+confirm the quote exists in the chunk. Claims that fail this check are marked
+`verified=-1`.
 
 The audit chain is:
 
-```
-Claim.raw_quote → Chunk.text → Chunk.page_ref → Document.raw_path
+```text
+Claim.raw_quote -> Chunk.text -> Chunk.page_ref -> Document.raw_path
 ```
 
 **Contradiction detection:** when two claims from different papers have embedding
 similarity above 0.85, Claude classifies their relation as one of
 `supports | contradicts | refines | extends | unrelated`.
-Contradictions are stored as `EvidenceLink(relation='contradicts')` and
-generate a note in `contradictions/`.
+Contradictions are stored as `EvidenceLink(relation='contradicts')` and can mark
+claims as `contested`.
 
-**Obsolescence:** the `verify` command can flag claims about a concept that are
-superseded by newer claims from more recent papers.
+**Temporal validity:** lifecycle review is separate from traceability. A claim can be
+fully verified and still become `superseded` when newer evidence replaces it, or
+`contested` when another active claim contradicts it.
+
+**Auditability:** important state changes are recorded in `audit_log`, including
+claim verification, lifecycle transitions, contradiction links, and document compilation.
 
 ---
 
 ## Data model
 
-```
-Document   → has many Chunks
-Chunk      → has many Claims
-Claim      → linked to many Concepts (via claim_concept)
-EvidenceLink → typed directed edge between any two objects
-               (supports, contradicts, refines, defines, uses, extends, cites)
+```text
+Document   -> has many Chunks
+Chunk      -> has many Claims
+Claim      -> linked to many Concepts (via claim_concept)
+Claim      -> has traceability (verified) and lifecycle (active|superseded|contested)
+EvidenceLink -> typed directed edge between any two objects
+                (supports, contradicts, refines, defines, uses, extends, cites)
 ```
 
-Document pipeline states: `ingested → parsed → extracted → compiled → verified`
+Document pipeline states: `ingested -> parsed -> extracted -> compiled -> verified`
 
 ---
 
@@ -192,19 +214,20 @@ Document pipeline states: `ingested → parsed → extracted → compiled → ve
 | Type | Format | Notes |
 |---|---|---|
 | Academic papers | PDF | arXiv, journals |
-| Web articles | HTML | Saved with browser (Medium, Towards Data Science, LinkedIn) |
+| Web articles | HTML | Saved with browser |
 | Repositories | Markdown | README and docs |
 
 Sources should be peer-reviewed or from verifiable authors.
-Non-peer-reviewed articles (Medium, LinkedIn) are accepted but treated as lower-confidence sources.
+Non-peer-reviewed articles are accepted but treated as lower-confidence sources.
 
 ---
 
 ## Development
 
 ```bash
-poetry run pytest tests/ -v    # run all tests (58 tests, no API calls)
-poetry run ruff check .        # lint
+python -m pytest tests -v
+python -m pytest tests/cli/test_pipeline_smoke.py -q
+python -m ruff check .
 ```
 
 Tests use an in-memory SQLite database and mock the LLM client.
@@ -217,7 +240,7 @@ No real API calls are made during testing.
 | Variable | Default | Description |
 |---|---|---|
 | `LLM_BACKEND` | `claude-code` | `claude-code`, `codex`, or `anthropic` |
-| `ANTHROPIC_API_KEY` | — | Required only when `LLM_BACKEND=anthropic` |
+| `ANTHROPIC_API_KEY` | - | Required only when `LLM_BACKEND=anthropic` |
 | `LLM_MODEL` | `claude-sonnet-4-6` | Model name for the selected backend |
 | `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Sentence transformer for FAISS |
 | `KNOWLEDGE_DATA_ROOT` | `data` | Root directory for all data layers |

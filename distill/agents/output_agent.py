@@ -30,7 +30,9 @@ def generate_brief(
             continue
 
         claims_text = "\n".join(
-            f"[{c.claim_type}] {c.claim_text}" for c in claims if c.verified >= 0
+            f"[{c.claim_type}] {c.claim_text}"
+            for c in claims
+            if c.verified == 1 and c.lifecycle_status != "superseded"
         )
         sections.append(f"## {doc.title} ({doc.year})\n{claims_text}")
 
@@ -74,7 +76,10 @@ def generate_comparison_table(
         row = {"title": doc.title, "year": doc.year or ""}
         for dim in dimensions:
             # Find the first claim whose type matches the dimension
-            matching = [c for c in claims if c.claim_type == dim and c.verified >= 0]
+            matching = [
+                c for c in claims
+                if c.claim_type == dim and c.verified == 1 and c.lifecycle_status != "superseded"
+            ]
             row[dim] = matching[0].claim_text[:80] if matching else "—"
         rows.append(row)
 

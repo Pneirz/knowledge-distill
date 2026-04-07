@@ -2,8 +2,9 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import uuid4
 
-from distill.db.models import Chunk, Claim, Concept, Document, EvidenceLink
+from distill.db.models import AuditEvent, Chunk, Claim, Concept, Document, EvidenceLink
 
 
 # ---------------------------------------------------------------------------
@@ -222,8 +223,9 @@ def insert_claims(conn: sqlite3.Connection, claims: list[Claim]) -> None:
         """
         INSERT INTO claim (
             claim_id, doc_id, chunk_id, claim_text, claim_type,
-            confidence, verified, verified_at, page_ref, raw_quote
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            confidence, verified, verified_at, page_ref, raw_quote,
+            lifecycle_status, superseded_by_claim_id, lifecycle_updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -231,6 +233,8 @@ def insert_claims(conn: sqlite3.Connection, claims: list[Claim]) -> None:
                 c.confidence, c.verified,
                 c.verified_at.isoformat() if c.verified_at else None,
                 c.page_ref, c.raw_quote,
+                c.lifecycle_status, c.superseded_by_claim_id,
+                c.lifecycle_updated_at.isoformat() if c.lifecycle_updated_at else None,
             )
             for c in claims
         ],
@@ -242,6 +246,14 @@ def get_claims_by_doc(conn: sqlite3.Connection, doc_id: str) -> list[Claim]:
     """Return all claims for a document."""
     rows = conn.execute(
         "SELECT * FROM claim WHERE doc_id = ?", (doc_id,)
+    ).fetchall()
+    return [_row_to_claim(r) for r in rows]
+
+
+def get_claims_by_chunk(conn: sqlite3.Connection, chunk_id: str) -> list[Claim]:
+    """Return all claims extracted from a specific chunk."""
+    rows = conn.execute(
+        "SELECT * FROM claim WHERE chunk_id = ? ORDER BY claim_id", (chunk_id,)
     ).fetchall()
     return [_row_to_claim(r) for r in rows]
 
@@ -268,6 +280,26 @@ def update_claim_verification(
     conn.commit()
 
 
+def update_claim_lifecycle(
+    conn: sqlite3.Connection,
+    claim_id: str,
+    lifecycle_status: str,
+    superseded_by_claim_id: Optional[str] = None,
+    lifecycle_updated_at: Optional[str] = None,
+) -> None:
+    """Update lifecycle metadata for a claim."""
+    timestamp = lifecycle_updated_at or _now()
+    conn.execute(
+        """
+        UPDATE claim
+        SET lifecycle_status = ?, superseded_by_claim_id = ?, lifecycle_updated_at = ?
+        WHERE claim_id = ?
+        """,
+        (lifecycle_status, superseded_by_claim_id, timestamp, claim_id),
+    )
+    conn.commit()
+
+
 def _row_to_claim(row: sqlite3.Row) -> Claim:
     return Claim(
         claim_id=row["claim_id"],
@@ -280,6 +312,9 @@ def _row_to_claim(row: sqlite3.Row) -> Claim:
         verified_at=_parse_dt(row["verified_at"]),
         page_ref=row["page_ref"],
         raw_quote=row["raw_quote"],
+        lifecycle_status=row["lifecycle_status"] or "active",
+        superseded_by_claim_id=row["superseded_by_claim_id"],
+        lifecycle_updated_at=_parse_dt(row["lifecycle_updated_at"]),
     )
 
 
@@ -377,6 +412,26 @@ def insert_evidence_link(conn: sqlite3.Connection, link: EvidenceLink) -> None:
     )
     conn.commit()
 
+    insert_audit_event(
+        conn,
+        AuditEvent(
+            event_id=str(uuid4()),
+            entity_type="evidence_link",
+            entity_id=link.link_id,
+            action="created",
+            details_json=json.dumps(
+                {
+                    "from_type": link.from_type,
+                    "from_id": link.from_id,
+                    "to_type": link.to_type,
+                    "to_id": link.to_id,
+                    "relation": link.relation,
+                    "confidence": link.confidence,
+                }
+            ),
+        ),
+    )
+
 
 def get_links_from(
     conn: sqlite3.Connection,
@@ -450,3 +505,62 @@ def get_claim_ids_for_concept(
         "SELECT claim_id FROM claim_concept WHERE concept_id = ?", (concept_id,)
     ).fetchall()
     return [r["claim_id"] for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# AuditLog
+# ---------------------------------------------------------------------------
+
+def insert_audit_event(conn: sqlite3.Connection, event: AuditEvent) -> None:
+    """Persist an audit trail event."""
+    conn.execute(
+        """
+        INSERT INTO audit_log (
+            event_id, entity_type, entity_id, action, details_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            event.event_id,
+            event.entity_type,
+            event.entity_id,
+            event.action,
+            event.details_json,
+            event.created_at.isoformat(),
+        ),
+    )
+    conn.commit()
+
+
+def list_audit_events(
+    conn: sqlite3.Connection,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+) -> list[AuditEvent]:
+    """Return audit events ordered chronologically."""
+    query = "SELECT * FROM audit_log"
+    clauses = []
+    params: list[str] = []
+
+    if entity_type:
+        clauses.append("entity_type = ?")
+        params.append(entity_type)
+    if entity_id:
+        clauses.append("entity_id = ?")
+        params.append(entity_id)
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY created_at"
+
+    rows = conn.execute(query, params).fetchall()
+    return [_row_to_audit_event(r) for r in rows]
+
+
+def _row_to_audit_event(row: sqlite3.Row) -> AuditEvent:
+    return AuditEvent(
+        event_id=row["event_id"],
+        entity_type=row["entity_type"],
+        entity_id=row["entity_id"],
+        action=row["action"],
+        details_json=row["details_json"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )

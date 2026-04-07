@@ -1,15 +1,17 @@
 import sqlite3
+import json
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import yaml
 
 from distill.config import Config
+from distill.db.models import AuditEvent
 from distill.db.repository import (
     get_claims_by_doc,
-    get_concept_by_name,
     get_document,
-    list_concepts,
+    insert_audit_event,
     update_document_status,
 )
 from distill.llm.client import BaseLLMClient
@@ -270,4 +272,19 @@ def run_compiler(
     update_document_status(
         conn, doc_id, "compiled",
         wiki_path=str(paper_note_path.relative_to(cfg.data_root))
+    )
+    insert_audit_event(
+        conn,
+        AuditEvent(
+            event_id=str(uuid4()),
+            entity_type="document",
+            entity_id=doc_id,
+            action="compiled",
+            details_json=json.dumps(
+                {
+                    "wiki_path": str(paper_note_path.relative_to(cfg.data_root)),
+                    "concept_notes": sorted(compiled_concepts),
+                }
+            ),
+        ),
     )
