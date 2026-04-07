@@ -222,9 +222,13 @@ class CodexCLIClient:
             prompt,
         ]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(cmd, capture_output=True, timeout=300)
             if result.returncode != 0:
-                stderr = result.stderr[:500] if result.stderr else "unknown error"
+                stderr = (
+                    result.stderr.decode("utf-8", errors="replace")[:500]
+                    if result.stderr
+                    else "unknown error"
+                )
                 raise RuntimeError(f"codex CLI error: {stderr}")
             return output_path.read_text(encoding="utf-8").strip()
         finally:
@@ -263,7 +267,7 @@ class CodexCLIClient:
         raw = re.sub(r"\s*```$", "", raw)
         raw = raw.strip()
         try:
-            return json.loads(raw)
+            return json.loads(raw, strict=False)
         except json.JSONDecodeError as exc:
             logger.error("codex CLI returned invalid JSON: %s", raw[:500])
             raise ValueError(f"codex CLI response is not valid JSON: {exc}") from exc

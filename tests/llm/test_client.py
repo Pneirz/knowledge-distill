@@ -117,10 +117,10 @@ def test_codex_complete_reads_last_message_file():
 
         return _TempFile()
 
-    def fake_run(cmd, capture_output, text, timeout):
+    def fake_run(cmd, capture_output, timeout):
         response = MagicMock()
         response.returncode = 0
-        response.stderr = ""
+        response.stderr = b""
         return response
 
     with patch("distill.llm.client.tempfile.NamedTemporaryFile", fake_named_tempfile):
