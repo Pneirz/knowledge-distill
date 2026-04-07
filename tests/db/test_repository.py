@@ -1,12 +1,13 @@
 # %%
-from datetime import datetime
+from datetime import datetime, UTC
 
 import pytest
 
-from distill.db.models import Chunk, Claim, Concept, EvidenceLink
+from distill.db.models import AuditEvent, Chunk, Claim, Concept, EvidenceLink
 from distill.db.repository import (
     get_claim_ids_for_concept,
     get_claims_by_doc,
+    get_claims_by_chunk,
     get_concept_by_name,
     get_document,
     get_document_by_hash,
@@ -17,8 +18,11 @@ from distill.db.repository import (
     insert_claims,
     insert_document,
     insert_evidence_link,
+    insert_audit_event,
+    list_audit_events,
     list_concepts,
     list_documents,
+    update_claim_lifecycle,
     update_claim_verification,
     update_document_status,
     upsert_concept,
@@ -136,6 +140,8 @@ def test_insert_and_get_claims(db, sample_document):
 
     result = get_claims_by_doc(db, sample_document.doc_id)
     assert len(result) == 2
+    by_chunk = get_claims_by_chunk(db, chunk.chunk_id)
+    assert len(by_chunk) == 2
 
 
 def test_get_unverified_claims(db, sample_document):
@@ -146,9 +152,31 @@ def test_get_unverified_claims(db, sample_document):
     claims = [_make_claim(sample_document.doc_id, chunk.chunk_id, i) for i in range(3)]
     insert_claims(db, claims)
 
-    update_claim_verification(db, claims[0].claim_id, 1, datetime.utcnow().isoformat())
+    update_claim_verification(db, claims[0].claim_id, 1, datetime.now(UTC).isoformat())
     unverified = get_unverified_claims(db)
     assert len(unverified) == 2
+
+
+def test_update_claim_lifecycle(db, sample_document):
+    """Lifecycle updates are stored independently from traceability."""
+    insert_document(db, sample_document)
+    chunk = _make_chunk(sample_document.doc_id, 0)
+    insert_chunks(db, [chunk])
+    claim = _make_claim(sample_document.doc_id, chunk.chunk_id, 0)
+    newer_claim = _make_claim(sample_document.doc_id, chunk.chunk_id, 1)
+    insert_claims(db, [claim, newer_claim])
+
+    update_claim_lifecycle(
+        db,
+        claim.claim_id,
+        "superseded",
+        superseded_by_claim_id=newer_claim.claim_id,
+    )
+
+    updated = get_claims_by_doc(db, sample_document.doc_id)[0]
+    assert updated.verified == 0
+    assert updated.lifecycle_status == "superseded"
+    assert updated.superseded_by_claim_id == newer_claim.claim_id
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +244,9 @@ def test_insert_and_get_evidence_link(db):
     results = get_links_from(db, "claim", "claim-1")
     assert len(results) == 1
     assert results[0].relation == "supports"
+    audit = list_audit_events(db, entity_type="evidence_link")
+    assert len(audit) == 1
+    assert audit[0].action == "created"
 
 
 # ---------------------------------------------------------------------------
@@ -243,3 +274,20 @@ def test_insert_claim_concept_idempotent(db, sample_document):
 
     result = get_claim_ids_for_concept(db, concept.concept_id)
     assert result == [claim.claim_id]
+
+
+def test_insert_and_list_audit_events(db):
+    """Audit events can be stored and filtered by entity."""
+    event = AuditEvent(
+        event_id="evt-001",
+        entity_type="claim",
+        entity_id="claim-123",
+        action="verification_updated",
+        details_json='{"verified": 1}',
+        created_at=datetime(2026, 4, 6, 12, 0, 0),
+    )
+    insert_audit_event(db, event)
+
+    result = list_audit_events(db, entity_type="claim", entity_id="claim-123")
+    assert len(result) == 1
+    assert result[0].event_id == "evt-001"

@@ -1,22 +1,26 @@
+from __future__ import annotations
+
 import pickle
 from pathlib import Path
+from typing import Any
 
 import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 
-def load_encoder(model_name: str = "BAAI/bge-small-en-v1.5") -> SentenceTransformer:
+def load_encoder(model_name: str = "BAAI/bge-small-en-v1.5") -> Any:
     """Load the sentence embedding model.
 
     BAAI/bge-small-en-v1.5 is 33M parameters, CPU-friendly, and performs
     well on BEIR benchmarks for technical English text.
     """
+    from sentence_transformers import SentenceTransformer
+
     return SentenceTransformer(model_name)
 
 
 def encode_texts(
-    encoder: SentenceTransformer,
+    encoder: Any,
     texts: list[str],
     batch_size: int = 64,
     normalize: bool = True,

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 # Type aliases for constrained string fields
@@ -7,6 +7,7 @@ SourceType = Literal["pdf", "html", "github"]
 ClaimType = Literal["finding", "method", "limitation", "comparison", "definition", "hypothesis"]
 DocStatus = Literal["ingested", "parsed", "extracted", "compiled", "verified"]
 Relation = Literal["supports", "contradicts", "refines", "defines", "uses", "extends", "cites"]
+LifecycleStatus = Literal["active", "superseded", "contested"]
 
 
 @dataclass
@@ -58,11 +59,14 @@ class Claim:
     claim_text: str
     claim_type: ClaimType
     confidence: float = 1.0
-    # 0 = unverified, 1 = verified, -1 = contradicted / untraceable
+    # 0 = unverified, 1 = verified, -1 = untraceable
     verified: int = 0
     verified_at: Optional[datetime] = None
     page_ref: Optional[int] = None
     raw_quote: Optional[str] = None
+    lifecycle_status: LifecycleStatus = "active"
+    superseded_by_claim_id: Optional[str] = None
+    lifecycle_updated_at: Optional[datetime] = None
 
 
 @dataclass
@@ -90,4 +94,20 @@ class EvidenceLink:
     to_id: str
     relation: Relation
     confidence: float = 1.0
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+
+
+@dataclass
+class AuditEvent:
+    """Immutable audit trail event for lifecycle and verification changes."""
+
+    event_id: str
+    entity_type: str
+    entity_id: str
+    action: str
+    details_json: str
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )

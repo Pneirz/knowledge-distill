@@ -8,7 +8,7 @@ def test_initialize_db_creates_all_tables(db):
     """All expected tables must exist after initialization."""
     expected_tables = {
         "document", "chunk", "claim", "concept",
-        "evidence_link", "claim_concept",
+        "evidence_link", "claim_concept", "audit_log",
     }
     rows = db.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
@@ -50,3 +50,10 @@ def test_document_status_check_constraint(db, sample_document):
             "UPDATE document SET status = 'invalid_status' WHERE doc_id = ?",
             (sample_document.doc_id,),
         )
+
+
+def test_claim_lifecycle_columns_exist(db):
+    """Claim table includes lifecycle fields introduced for temporal validity."""
+    rows = db.execute("PRAGMA table_info(claim)").fetchall()
+    columns = {row["name"] for row in rows}
+    assert {"lifecycle_status", "superseded_by_claim_id", "lifecycle_updated_at"}.issubset(columns)

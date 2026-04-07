@@ -337,13 +337,24 @@ def verify(ctx: click.Context, doc_id: str | None, process_all: bool, report: bo
 @click.argument("query_text")
 @click.option("--top-k", default=10, show_default=True)
 @click.option(
+    "--include-superseded",
+    is_flag=True,
+    help="Include superseded claims as secondary evidence.",
+)
+@click.option(
     "--format", "fmt",
     type=click.Choice(["text", "json", "markdown"]),
     default="text",
     show_default=True,
 )
 @click.pass_context
-def query(ctx: click.Context, query_text: str, top_k: int, fmt: str) -> None:
+def query(
+    ctx: click.Context,
+    query_text: str,
+    top_k: int,
+    include_superseded: bool,
+    fmt: str,
+) -> None:
     """Search the knowledge base and answer a question with evidence."""
     from distill.agents.query_agent import run_query
 
@@ -352,7 +363,15 @@ def query(ctx: click.Context, query_text: str, top_k: int, fmt: str) -> None:
     faiss_index, bm25_index, chunk_ids, encoder = _load_search_indices(ctx)
 
     result = run_query(
-        client, conn, query_text, encoder, faiss_index, bm25_index, chunk_ids, top_k=top_k
+        client,
+        conn,
+        query_text,
+        encoder,
+        faiss_index,
+        bm25_index,
+        chunk_ids,
+        top_k=top_k,
+        include_superseded=include_superseded,
     )
 
     if fmt == "json":
@@ -371,7 +390,13 @@ def _print_query_text(result: dict) -> None:
         console.print(f"[yellow]Uncertainty: {result['uncertainty']}[/yellow]")
     console.print(f"\n[bold]Sources ({len(result['sources'])}):[/bold]")
     for src in result["sources"]:
-        console.print(f"  - {src.get('title', src.get('doc_id', '?'))}: {src.get('quote', '')[:80]}")
+        lifecycle = src.get("lifecycle_status", "active")
+        verified = src.get("verified", "?")
+        note = f" [{src['note']}]" if src.get("note") else ""
+        console.print(
+            f"  - {src.get('title', src.get('doc_id', '?'))} "
+            f"(verified={verified}, lifecycle={lifecycle}): {src.get('quote', '')[:80]}{note}"
+        )
 
 
 def _print_query_markdown(result: dict) -> None:
@@ -385,7 +410,12 @@ def _print_query_markdown(result: dict) -> None:
     for src in result["sources"]:
         title = src.get("title", src.get("doc_id", "?"))
         quote = src.get("quote", "")[:100]
-        lines.append(f'- **{title}**: *"{quote}"*')
+        lifecycle = src.get("lifecycle_status", "active")
+        verified = src.get("verified", "?")
+        note = f" ({src['note']})" if src.get("note") else ""
+        lines.append(
+            f'- **{title}** [{lifecycle}, verified={verified}]: *"{quote}"*{note}'
+        )
     click.echo("\n".join(lines))
 
 
@@ -451,6 +481,46 @@ def output(
 
 
 # ---------------------------------------------------------------------------
+# review-lifecycle
+# ---------------------------------------------------------------------------
+
+@cli.command("review-lifecycle")
+@click.argument("concept_name", required=False)
+@click.option("--all", "review_all", is_flag=True, help="Review lifecycle for all concepts.")
+@click.pass_context
+def review_lifecycle_command(
+    ctx: click.Context,
+    concept_name: str | None,
+    review_all: bool,
+) -> None:
+    """Review obsolescence and contested claims without re-running verification."""
+    from distill.agents.verifier import review_lifecycle
+    from distill.db.repository import list_concepts
+
+    conn = _get_conn(ctx)
+    if conn is None:
+        console.print("[red]Run 'distill init' first.[/red]")
+        sys.exit(1)
+
+    client = _get_client(ctx)
+    if review_all:
+        concept_names = [concept.name for concept in list_concepts(conn)]
+    elif concept_name:
+        concept_names = [concept_name]
+    else:
+        console.print("[red]Provide a concept name or --all.[/red]")
+        sys.exit(1)
+
+    for name in concept_names:
+        result = review_lifecycle(conn, name, client=client)
+        console.print(
+            f"[green]{name}[/green]: "
+            f"{len(result['obsolete_claims'])} superseded, "
+            f"{len(result['contested_claims'])} contested"
+        )
+
+
+# ---------------------------------------------------------------------------
 # status
 # ---------------------------------------------------------------------------
 
@@ -512,11 +582,6 @@ def status(ctx: click.Context) -> None:
 @click.pass_context
 def reindex(ctx: click.Context) -> None:
     """Rebuild FAISS and BM25 search indices from all chunks in the database."""
-    import pickle
-
-    import numpy as np
-    from sentence_transformers import SentenceTransformer
-
     from distill.db.repository import get_all_chunks
     from distill.search.embeddings import (
         build_faiss_index,

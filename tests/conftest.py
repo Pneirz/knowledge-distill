@@ -2,7 +2,9 @@
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+import shutil
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
 
@@ -24,11 +26,27 @@ def db() -> sqlite3.Connection:
 
 
 @pytest.fixture
-def tmp_data_root(tmp_path: Path) -> Path:
+def tmp_data_root() -> Path:
     """Temporary directory tree matching the 8-layer data structure."""
-    cfg = Config(data_root=tmp_path)
+    root = Path.cwd() / ".test-tmp"
+    root.mkdir(parents=True, exist_ok=True)
+    temp_dir = root / f"distill-{uuid4().hex[:8]}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    cfg = Config(data_root=temp_dir)
     cfg.ensure_dirs()
-    return tmp_path
+    yield temp_dir
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@pytest.fixture
+def tmp_path() -> Path:
+    """Workspace-local replacement for pytest's tmp_path fixture."""
+    root = Path.cwd() / ".test-tmp"
+    root.mkdir(parents=True, exist_ok=True)
+    temp_dir = root / f"tmp-{uuid4().hex[:8]}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    yield temp_dir
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @pytest.fixture
